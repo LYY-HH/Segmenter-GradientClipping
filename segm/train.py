@@ -31,8 +31,11 @@ from segm.engine import train_one_epoch, evaluate
 @click.option("--crop-size", default=None, type=int)
 @click.option("--window-size", default=None, type=int)
 @click.option("--window-stride", default=None, type=int)
+@click.option("--ann-dir", default="data/voc12/SegmentationClassAug", type=str)
+# model parameters
 @click.option("--backbone", default="", type=str)
 @click.option("--decoder", default="", type=str)
+# optimizer parameters
 @click.option("--optimizer", default="sgd", type=str)
 @click.option("--scheduler", default="polynomial", type=str)
 @click.option("--weight-decay", default=0.0, type=float)
@@ -42,30 +45,45 @@ from segm.engine import train_one_epoch, evaluate
 @click.option("--epochs", default=None, type=int)
 @click.option("-lr", "--learning-rate", default=None, type=float)
 @click.option("--normalization", default=None, type=str)
-@click.option("--eval-freq", default=None, type=int)
-@click.option("--amp/--no-amp", default=False, is_flag=True)
-@click.option("--resume/--no-resume", default=True, is_flag=True)
+@click.option("--enc-lr", default=0.1, type=float)
+# pus parameters
+@click.option("--pus-type", default=None, type=str)
+@click.option("--pus-beta", default=None, type=float)
+@click.option("--pus-power", default=None, type=float)
+@click.option("--pus-kernel", default=None, type=int)
+# dist parameters
+@click.option("--num-workers", default=10, type=int)
+@click.option("--local_rank", type=int, default=None)
 def main(
-    log_dir,
-    dataset,
-    im_size,
-    crop_size,
-    window_size,
-    window_stride,
-    backbone,
-    decoder,
-    optimizer,
-    scheduler,
-    weight_decay,
-    dropout,
-    drop_path,
-    batch_size,
-    epochs,
-    learning_rate,
-    normalization,
-    eval_freq,
-    amp,
-    resume,
+        log_dir,
+        dataset,
+        im_size,
+        crop_size,
+        window_size,
+        window_stride,
+        backbone,
+        decoder,
+        optimizer,
+        scheduler,
+        weight_decay,
+        dropout,
+        drop_path,
+        batch_size,
+        epochs,
+        learning_rate,
+        normalization,
+        eval_freq,
+        amp,
+        resume,
+        pus_type,
+        pus_beta,
+        pus_power,
+        pus_kernel,
+        num_workers,
+        enc_lr,
+        ann_dir,
+        local_rank,
+        seed
 ):
     # start distributed mode
     ptu.set_gpu_mode(True)
@@ -119,6 +137,10 @@ def main(
         world_batch_size=world_batch_size,
         version="normal",
         resume=resume,
+        pus_type=pus_type,
+        pus_beta=pus_beta,
+        pus_power=pus_power,
+        pus_kernel=pus_kernel,
         dataset_kwargs=dict(
             dataset=dataset,
             image_size=im_size,
@@ -126,7 +148,8 @@ def main(
             batch_size=batch_size,
             normalization=model_cfg["normalization"],
             split="train",
-            num_workers=10,
+            num_workers=num_workers,
+            ann_dir=ann_dir,
         ),
         algorithm_kwargs=dict(
             batch_size=batch_size,
@@ -145,6 +168,7 @@ def main(
             min_lr=1e-5,
             poly_power=0.9,
             poly_step_size=1,
+            enc_lr=enc_lr
         ),
         net_kwargs=model_cfg,
         amp=amp,
@@ -159,6 +183,7 @@ def main(
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = log_dir / "checkpoint.pth"
+    checkpoint_best_path = log_dir / "checkpoint_best.pth"
 
     # dataset
     dataset_kwargs = variant["dataset_kwargs"]
@@ -176,6 +201,13 @@ def main(
     net_kwargs["n_cls"] = n_cls
     model = create_segmenter(net_kwargs)
     model.to(ptu.device)
+    # from ptflops import get_model_complexity_info
+    # macs, params = get_model_complexity_info(model, (3, 480, 480), as_strings=True,
+    #                                          print_per_layer_stat=True, verbose=True)
+    # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+    # import sys
+    # sys.exit()
 
     # optimizer
     optimizer_kwargs = variant["optimizer_kwargs"]
@@ -185,7 +217,17 @@ def main(
     opt_vars = vars(opt_args)
     for k, v in optimizer_kwargs.items():
         opt_vars[k] = v
-    optimizer = create_optimizer(opt_args, model)
+    model_params = [
+        {
+            "params": model.encoder.parameters(),
+            "lr": enc_lr * lr
+        },
+        {
+            "params": model.decoder.parameters()
+        }
+    ]
+    optimizer = create_optimizer(opt_args, model_params)
+    # print(optimizer.param_groups[0]["lr"])
     lr_scheduler = create_scheduler(opt_args, optimizer)
     num_iterations = 0
     amp_autocast = suppress
@@ -193,7 +235,8 @@ def main(
     if amp:
         amp_autocast = torch.cuda.amp.autocast
         loss_scaler = NativeScaler()
-
+    max_miou = 0
+    max_epoch = 0
     # resume
     if resume and checkpoint_path.exists():
         print(f"Resuming training from checkpoint: {checkpoint_path}")
@@ -204,6 +247,14 @@ def main(
             loss_scaler.load_state_dict(checkpoint["loss_scaler"])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
         variant["algorithm_kwargs"]["start_epoch"] = checkpoint["epoch"] + 1
+        try:
+            # load best_checkpoint
+            checkpoint_best = torch.load(checkpoint_best_path, map_location="cpu")
+            max_epoch = checkpoint_best["epoch"]
+            max_miou = checkpoint_best["miou"]
+        except:
+            pass
+
     else:
         sync_model(log_dir, model)
 
@@ -245,6 +296,10 @@ def main(
             epoch,
             amp_autocast,
             loss_scaler,
+            pus_type=pus_type,
+            pus_beta=pus_beta,
+            pus_power=pus_power,
+            pus_kernel=pus_kernel
         )
 
         # save checkpoint
@@ -263,7 +318,7 @@ def main(
         # evaluate
         eval_epoch = epoch % eval_freq == 0 or epoch == num_epochs - 1
         if eval_epoch:
-            eval_logger = evaluate(
+            eval_logger, miou = evaluate(
                 model,
                 val_loader,
                 val_seg_gt,
@@ -271,8 +326,27 @@ def main(
                 window_stride,
                 amp_autocast,
             )
-            print(f"Stats [{epoch}]:", eval_logger, flush=True)
-            print("")
+
+            # save checkpoint best
+            if miou > max_miou and ptu.dist_rank == 0:
+                max_miou = miou
+                max_epoch = epoch
+                snapshot = dict(
+                    model=model_without_ddp.state_dict(),
+                    optimizer=optimizer.state_dict(),
+                    n_cls=model_without_ddp.n_cls,
+                    lr_scheduler=lr_scheduler.state_dict(),
+                )
+                if loss_scaler is not None:
+                    snapshot["loss_scaler"] = loss_scaler.state_dict()
+                snapshot["epoch"] = epoch
+                snapshot["miou"] = max_miou
+                torch.save(snapshot, checkpoint_best_path)
+            eval_logger.update(**{"max_miou": max_miou, "n": 1})
+            eval_logger.update(**{"max_epoch": max_epoch, "n": 1})
+            if ptu.dist_rank == 0:
+                print(f"Stats [{epoch}]:", eval_logger, flush=True)
+                print("")
 
         # log stats
         if ptu.dist_rank == 0:

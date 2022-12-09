@@ -5,6 +5,7 @@ from segm.data import ADE20KSegmentation
 from segm.data import PascalContextDataset
 from segm.data import CityscapesDataset
 from segm.data import Loader
+from segm.data import COCODataset
 
 
 def create_dataset(dataset_kwargs):
@@ -22,6 +23,9 @@ def create_dataset(dataset_kwargs):
         dataset = ADE20KSegmentation(split=split, **dataset_kwargs)
     elif dataset_name == "pascal_context":
         dataset = PascalContextDataset(split=split, **dataset_kwargs)
+    elif dataset_name == "coco":
+        # print('dataset_kwargs: ', **dataset_kwargs)
+        dataset = COCODataset(split=split, **dataset_kwargs)
     elif dataset_name == "cityscapes":
         dataset = CityscapesDataset(split=split, **dataset_kwargs)
     else:

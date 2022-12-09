@@ -32,6 +32,14 @@ model:
     n_layers: 12
     normalization: deit
     distilled: true
+  deit_small_patch16_224:
+    image_size: 224
+    patch_size: 16
+    d_model: 384
+    n_heads: 6
+    n_layers: 12
+    normalization: deit
+    distilled: false
   # vit
   vit_base_patch8_384:
     image_size: 384

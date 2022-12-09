@@ -4,8 +4,10 @@ import math
 from segm.utils.logger import MetricLogger
 from segm.metrics import gather_data, compute_metrics
 from segm.model import utils
-from segm.data.utils import IGNORE_LABEL
+from segm.data.utils import IGNORE_LABEL, weight_reduce_loss
 import segm.utils.torch as ptu
+
+import torch.nn.functional as F
 
 
 def train_one_epoch(
@@ -16,8 +18,12 @@ def train_one_epoch(
     epoch,
     amp_autocast,
     loss_scaler,
+    pus_type=None,
+    pus_beta=None,
+    pus_power=None,
+    pus_kernel=None,
 ):
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=IGNORE_LABEL)
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=IGNORE_LABEL, reduction="none")
     logger = MetricLogger(delimiter="  ")
     header = f"Epoch: [{epoch}]"
     print_freq = 100
@@ -32,6 +38,136 @@ def train_one_epoch(
         with amp_autocast():
             seg_pred = model.forward(im)
             loss = criterion(seg_pred, seg_gt)
+
+            logger.update(
+                mean_loss=loss.mean().item(),
+            )
+            if pus_type == "adaptive" and loss.mean() < pus_beta:
+                mean_loss = loss.detach().clone().mean()
+                loss = torch.clamp(loss, 0, mean_loss)
+            elif pus_type == "local_adaptive" and loss.mean() < pus_beta:
+                detach_loss = loss.detach().clone()
+                mean_loss = detach_loss.mean()
+                b, h, w = detach_loss.shape
+                detach_loss = detach_loss.mean(dim=0).unsqueeze(0)
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+                local_mean = torch.maximum(local_mean, mean_loss)
+                local_mean = torch.repeat_interleave(local_mean, b, dim=0)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+
+                clamp_loss = loss - local_mean
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "min_local_adaptive" and loss.mean() < pus_beta:
+                detach_loss = loss.detach().clone()
+                mean_loss = detach_loss.mean()
+                b, h, w = detach_loss.shape
+                detach_loss = detach_loss.mean(dim=0).unsqueeze(0)
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+                local_mean = torch.minimum(mean_loss, local_mean)
+                local_mean = torch.repeat_interleave(local_mean, b, dim=0)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+
+                clamp_loss = loss - local_mean
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "mean_local_adaptive" and loss.mean() < pus_beta:
+                detach_loss = loss.detach().clone()
+                mean_loss = detach_loss.mean()
+                b, h, w = detach_loss.shape
+                detach_loss = detach_loss.mean(dim=0).unsqueeze(0)
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+                local_mean = (local_mean + mean_loss) / 2
+                local_mean = torch.repeat_interleave(local_mean, b, dim=0)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+
+                clamp_loss = loss - local_mean
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "adaptive_power" and loss.mean() < pus_beta:
+                mean_loss = loss.detach().clone().mean()
+                loss = torch.clamp(loss, 0, mean_loss ** pus_power)
+            elif pus_type == "adaptive_slide":
+                detach_loss = loss.detach().clone()
+                b, h, w = detach_loss.shape
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+                clamp_loss = (loss - local_mean)
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "global_adaptive_slide" and loss.mean() < pus_beta:
+                detach_loss = loss.detach().clone()
+                b, h, w = detach_loss.shape
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+                clamp_loss = (loss - local_mean)
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "local_adaptive_slide":
+                detach_loss = loss.detach().clone()
+                b, h, w = detach_loss.shape
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+                for_clamp_loss = (loss - local_mean)
+                clamp_loss = for_clamp_loss.clone()
+                clamp_loss[for_clamp_loss > 0] *= (pus_beta - local_mean[for_clamp_loss > 0])
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                clamp_loss[for_clamp_loss > 0] /= (pus_beta - local_mean[for_clamp_loss > 0])
+                loss = clamp_loss + local_mean
+            elif pus_type == "batch_adaptive_slide":
+                detach_loss = loss.detach().clone()
+                b, h, w = detach_loss.shape
+                detach_loss = detach_loss.mean(dim=0).unsqueeze(0)
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+
+                local_mean = torch.repeat_interleave(local_mean, b, dim=0)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+                clamp_loss = loss - local_mean
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                loss = clamp_loss + local_mean
+            elif pus_type == "batch_local_adaptive_slide":
+                detach_loss = loss.detach().clone()
+                b, h, w = detach_loss.shape
+                detach_loss = detach_loss.mean(dim=0).unsqueeze(0)
+                local_mean = F.avg_pool2d(detach_loss.unsqueeze(1), kernel_size=pus_kernel,
+                                          stride=pus_kernel, padding=h % pus_kernel,
+                                          count_include_pad=False).squeeze(1)
+
+                local_mean = torch.repeat_interleave(local_mean, b, dim=0)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=1)
+                local_mean = torch.repeat_interleave(local_mean, pus_kernel, dim=2)
+                for_clamp_loss = (loss - local_mean)
+                clamp_loss = for_clamp_loss.clone()
+                clamp_loss[for_clamp_loss > 0] *= (pus_beta - local_mean[for_clamp_loss > 0])
+                clamp_loss = torch.clamp(clamp_loss, None, 0)
+                clamp_loss[for_clamp_loss > 0] /= (pus_beta - local_mean[for_clamp_loss > 0])
+                loss = clamp_loss + local_mean
+            loss = weight_reduce_loss(
+                loss, weight=None, reduction="mean", avg_factor=None)
 
         loss_value = loss.item()
         if not math.isfinite(loss_value):
@@ -55,7 +191,8 @@ def train_one_epoch(
 
         logger.update(
             loss=loss.item(),
-            learning_rate=optimizer.param_groups[0]["lr"],
+            enc_learning_rate=optimizer.param_groups[0]["lr"],
+            dec_learning_rate=optimizer.param_groups[1]["lr"],
         )
 
     return logger
@@ -113,4 +250,4 @@ def evaluate(
     for k, v in scores.items():
         logger.update(**{f"{k}": v, "n": 1})
 
-    return logger
+    return logger, scores['mean_iou']
