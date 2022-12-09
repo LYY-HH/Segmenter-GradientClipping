@@ -129,6 +129,15 @@ dataset:
     crop_size: 480
     window_size: 480
     window_stride: 320
+  coco:
+    epochs: 256
+    eval_freq: 1
+    batch_size: 16
+    learning_rate: 0.001
+    im_size: 520
+    crop_size: 480
+    window_size: 480
+    window_stride: 320
   cityscapes:
     epochs: 216
     eval_freq: 4

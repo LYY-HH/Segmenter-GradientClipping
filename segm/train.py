@@ -23,9 +23,16 @@ from contextlib import suppress
 from segm.utils.distributed import sync_model
 from segm.engine import train_one_epoch, evaluate
 
+import mlflow
+
 
 @click.command(help="")
 @click.option("--log-dir", type=str, help="logging directory")
+@click.option("--eval-freq", default=None, type=int)
+@click.option("--amp/--no-amp", default=False, is_flag=True)
+@click.option("--resume/--no-resume", default=False, is_flag=True)
+@click.option("--seed", default=None, type=int)
+# data parameters
 @click.option("--dataset", type=str)
 @click.option("--im-size", default=None, type=int, help="dataset resize size")
 @click.option("--crop-size", default=None, type=int)
@@ -88,6 +95,9 @@ def main(
     # start distributed mode
     ptu.set_gpu_mode(True)
     distributed.init_process()
+
+    # start mlflow
+    mlflow.start_run(run_name=log_dir)
 
     # set up configuration
     cfg = config.load_config()
@@ -366,6 +376,8 @@ def main(
                 "num_updates": (epoch + 1) * len(train_loader),
             }
 
+            for key, value in log_stats.items():
+                mlflow.log_metric(key, value, log_stats["epoch"])
             with open(log_dir / "log.txt", "a") as f:
                 f.write(json.dumps(log_stats) + "\n")
 

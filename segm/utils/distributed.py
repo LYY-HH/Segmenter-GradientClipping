@@ -10,11 +10,11 @@ import segm.utils.torch as ptu
 def init_process(backend="nccl"):
     print(f"Starting process with rank {ptu.dist_rank}...", flush=True)
 
-    if "SLURM_STEPS_GPUS" in os.environ:
-        gpu_ids = os.environ["SLURM_STEP_GPUS"].split(",")
-        os.environ["MASTER_PORT"] = str(12345 + int(min(gpu_ids)))
-    else:
-        os.environ["MASTER_PORT"] = str(12345)
+    # if "SLURM_STEPS_GPUS" in os.environ:
+    #     gpu_ids = os.environ["SLURM_STEP_GPUS"].split(",")
+    #     os.environ["MASTER_PORT"] = str(12345 + int(min(gpu_ids)))
+    # else:
+    #     os.environ["MASTER_PORT"] = str(12345)
 
     if "SLURM_JOB_NODELIST" in os.environ:
         hostnames = hostlist.expand_hostlist(os.environ["SLURM_JOB_NODELIST"])
