@@ -25,12 +25,15 @@ from segm.engine import train_one_epoch, evaluate
 
 import mlflow
 
+from hashlib import sha1
+
 
 @click.command(help="")
 @click.option("--log-dir", type=str, help="logging directory")
 @click.option("--eval-freq", default=None, type=int)
 @click.option("--amp/--no-amp", default=False, is_flag=True)
 @click.option("--resume/--no-resume", default=False, is_flag=True)
+@click.option("--run-id", default=None, type=str)
 @click.option("--seed", default=None, type=int)
 # data parameters
 @click.option("--dataset", type=str)
@@ -90,14 +93,18 @@ def main(
         enc_lr,
         ann_dir,
         local_rank,
-        seed
+        seed,
+        run_id
 ):
     # start distributed mode
     ptu.set_gpu_mode(True)
     distributed.init_process()
 
     # start mlflow
-    mlflow.start_run(run_name=log_dir)
+    if resume:
+        mlflow.start_run(run_id=run_id)
+    else:
+        mlflow.start_run(run_name=log_dir)
 
     # set up configuration
     cfg = config.load_config()

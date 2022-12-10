@@ -9,6 +9,22 @@
           </advancedOptions>
         </fileTransfer>
       </webServer>
+      <webServer id="896da3b9-f672-484e-9a4a-6364bdcb5709" name="local 2022">
+        <fileTransfer accessType="SFTP" host="localhost" port="2022" sshConfigId="d648f17c-ffb7-4049-8a5f-2b5d5c309896" sshConfig="yingyueli@localhost:2022 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
     </option>
+    <groups>
+      <group>
+        <name>local</name>
+        <servers>
+          <name value="local 2000" />
+          <name value="local 2022" />
+        </servers>
+      </group>
+    </groups>
   </component>
 </project>
