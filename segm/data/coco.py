@@ -10,7 +10,7 @@ COCO_CONTEXT_CATS_PATH = Path(__file__).parent / "config" / "coco.yml"
 
 
 class COCODataset(BaseMMSeg):
-    def __init__(self, image_size, crop_size, split, ann_dir=None, **kwargs):
+    def __init__(self, image_size, crop_size, split, ann_dir=None, eval_split=None, **kwargs):
         self.names, self.colors = utils.dataset_cat_description(
             COCO_CONTEXT_CATS_PATH
         )
@@ -18,6 +18,7 @@ class COCODataset(BaseMMSeg):
         self.ignore_label = 255
         self.reduce_zero_label = False
         self.ann_dir = ann_dir
+        self.eval_split = eval_split
         super().__init__(
             image_size, crop_size, split, COCO_CONTEXT_CONFIG_PATH, **kwargs
         )
@@ -28,9 +29,12 @@ class COCODataset(BaseMMSeg):
         config.data_root = path
         if self.split == "train":
             config.data.train.data_root = path
-            config.data.train.ann_dir = self.ann_dir
+            if self.ann_dir is not None:
+                config.data.train.ann_dir = self.ann_dir
         elif self.split == "val":
             config.data.val.data_root = path
+            if self.eval_split is not None:
+                config.data.val.split = self.eval_split
         elif self.split == "test":
             raise ValueError("Test split is not valid for Pascal Context dataset")
         config = super().update_default_config(config)
