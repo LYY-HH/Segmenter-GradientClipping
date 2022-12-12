@@ -23,6 +23,7 @@ class BaseMMSeg(Dataset):
         split,
         config_path,
         normalization,
+        max_ratio=None,
         **kwargs,
     ):
         super().__init__()
@@ -38,7 +39,10 @@ class BaseMMSeg(Dataset):
 
         config = Config.fromfile(config_path)
 
-        self.ratio = config.max_ratio
+        if max_ratio is not None:
+            self.ratio = max_ratio
+        else:
+            self.ratio = config.max_ratio
         self.dataset = None
         self.config = self.update_default_config(config)
         self.dataset = build_dataset(getattr(self.config.data, f"{self.split}"))
@@ -52,6 +56,7 @@ class BaseMMSeg(Dataset):
             config_pipeline = getattr(config, f"{self.split}_pipeline")
 
         img_scale = (self.ratio * self.image_size, self.image_size)
+        print(img_scale)
         if self.split not in train_splits:
             assert config_pipeline[1]["type"] == "MultiScaleFlipAug"
             config_pipeline = config_pipeline[1]["transforms"]

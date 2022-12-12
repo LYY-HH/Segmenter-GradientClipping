@@ -37,6 +37,7 @@ from hashlib import sha1
 @click.option("--seed", default=None, type=int)
 # data parameters
 @click.option("--dataset", type=str)
+@click.option("--max-ratio", type=int, default=None)
 @click.option("--im-size", default=None, type=int, help="dataset resize size")
 @click.option("--crop-size", default=None, type=int)
 @click.option("--window-size", default=None, type=int)
@@ -67,6 +68,7 @@ from hashlib import sha1
 def main(
         log_dir,
         dataset,
+        max_ratio,
         im_size,
         crop_size,
         window_size,
@@ -167,6 +169,7 @@ def main(
             split="train",
             num_workers=num_workers,
             ann_dir=ann_dir,
+            max_ratio=max_ratio
         ),
         algorithm_kwargs=dict(
             batch_size=batch_size,

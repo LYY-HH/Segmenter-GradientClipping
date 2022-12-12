@@ -16,6 +16,13 @@
           </advancedOptions>
         </fileTransfer>
       </webServer>
+      <webServer id="fa3218e1-0646-4127-aa1a-5e124d8bb763" name="local 2001">
+        <fileTransfer accessType="SFTP" host="localhost" port="2001" sshConfigId="72f758f4-5053-4233-a491-a411a8f12bc6" sshConfig="yingyueli@localhost:2001 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
     </option>
     <groups>
       <group>
@@ -23,6 +30,7 @@
         <servers>
           <name value="local 2000" />
           <name value="local 2022" />
+          <name value="local 2001" />
         </servers>
       </group>
     </groups>

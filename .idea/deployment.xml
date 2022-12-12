@@ -10,6 +10,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="local 2001">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/mnt/oct26/GradientClipping" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="local 2022">
         <serverdata>
           <mappings>
