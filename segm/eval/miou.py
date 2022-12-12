@@ -55,7 +55,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
 
 
 def process_batch(
-    model, batch, window_size, window_stride, window_batch_size,
+    model, batch, window_size, window_stride, window_batch_size, crf, normalization
 ):
     ims = batch["im"]
     ims_metas = batch["im_metas"]
@@ -75,8 +75,19 @@ def process_batch(
         window_stride,
         window_batch_size,
     )
-    seg_pred = seg_pred.argmax(0)
     im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
+    if crf:
+        from segm.eval.densecrf import crf_inference
+        im_unnorm = rgb_denormalize(im, normalization)
+        im_uint = (im_unnorm.permute(0, 2, 3, 1).cpu().numpy()).astype(np.uint8)
+
+        orig_image = im_uint[0]
+        bgcam_score = torch.nn.functional.softmax(seg_pred.detach().clone(), dim=0).cpu().numpy()
+        crf_score = crf_inference(orig_image, bgcam_score, labels=bgcam_score.shape[0])
+        seg_pred = torch.tensor(crf_score)
+
+    seg_pred = seg_pred.argmax(0)
+
 
     return filename, im.cpu(), seg_pred.cpu()
 
@@ -92,6 +103,7 @@ def eval_dataset(
     save_images,
     frac_dataset,
     dataset_kwargs,
+    crf
 ):
     db = create_dataset(dataset_kwargs)
     normalization = db.dataset.normalization
@@ -112,7 +124,7 @@ def eval_dataset(
     for batch in logger.log_every(db, print_freq, header):
         colors = batch["colors"]
         filename, im, seg_pred = process_batch(
-            model, batch, window_size, window_stride, window_batch_size,
+            model, batch, window_size, window_stride, window_batch_size, crf, normalization
         )
         ims[filename] = im
         seg_pred_maps[filename] = seg_pred
@@ -196,6 +208,7 @@ def eval_dataset(
 @click.option("-frac-dataset", "--frac-dataset", default=1.0, type=float)
 @click.option("--local_rank", type=int, default=None)
 @click.option("--eval-split", type=str, default=None)
+@click.option("--crf/--no-crf", default=False, is_flag=True)
 def main(
     model_path,
     dataset_name,
@@ -208,7 +221,8 @@ def main(
     save_images,
     frac_dataset,
     local_rank,
-    eval_split
+    eval_split,
+    crf
 ):
 
     model_dir = Path(model_path).parent
@@ -243,7 +257,7 @@ def main(
         crop_size=im_size,
         patch_size=patch_size,
         batch_size=1,
-        num_workers=10,
+        num_workers=2,
         split="val",
         normalization=normalization,
         crop=False,
@@ -262,6 +276,7 @@ def main(
         save_images,
         frac_dataset,
         dataset_kwargs,
+        crf
     )
 
     # distributed.barrier()
