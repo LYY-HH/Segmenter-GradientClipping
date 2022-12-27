@@ -1,4 +1,5 @@
 import sys
+import os
 import click
 from pathlib import Path
 import yaml
@@ -20,6 +21,8 @@ from segm.metrics import gather_data, compute_metrics
 from segm.model.utils import inference
 from segm.data.utils import seg_to_rgb, rgb_denormalize, IGNORE_LABEL
 from segm import config
+
+from PIL import Image
 
 
 def blend_im(im, seg, alpha=0.5):
@@ -47,7 +50,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
         else:
             ims = (im_uint[i], seg_pred_uint[i], seg_rgb_uint[i])
         for im, im_dir in zip(
-            ims, (save_dir / "input", save_dir / "pred", save_dir / "gt"),
+                ims, (save_dir / "input", save_dir / "pred", save_dir / "gt"),
         ):
             pil_out = Image.fromarray(im)
             im_dir.mkdir(exist_ok=True)
@@ -55,7 +58,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
 
 
 def process_batch(
-    model, batch, window_size, window_stride, window_batch_size, crf, normalization
+        model, batch, window_size, window_stride, window_batch_size, crf, normalization, img_path
 ):
     ims = batch["im"]
     ims_metas = batch["im_metas"]
@@ -76,34 +79,36 @@ def process_batch(
         window_batch_size,
     )
     im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
+    seg_prob = seg_pred.detach().clone()
+
+    keys = torch.unique(seg_pred)
+    seg_prob = torch.tensor([seg_prob[k] for k in keys])
     if crf:
         from segm.eval.densecrf import crf_inference
-        im_unnorm = rgb_denormalize(im, normalization)
-        im_uint = (im_unnorm.permute(0, 2, 3, 1).cpu().numpy()).astype(np.uint8)
 
-        orig_image = im_uint[0]
-        bgcam_score = torch.nn.functional.softmax(seg_pred.detach().clone(), dim=0).cpu().numpy()
+        orig_image = np.array(Image.open(os.path.join(img_path, filename)).convert("RGB")).astype(np.uint8)
+        bgcam_score = torch.nn.functional.softmax(seg_prob, dim=0).cpu().numpy()
         crf_score = crf_inference(orig_image, bgcam_score, labels=bgcam_score.shape[0])
         seg_pred = torch.tensor(crf_score)
 
     seg_pred = seg_pred.argmax(0)
 
-
     return filename, im.cpu(), seg_pred.cpu()
 
 
 def eval_dataset(
-    model,
-    multiscale,
-    model_dir,
-    blend,
-    window_size,
-    window_stride,
-    window_batch_size,
-    save_images,
-    frac_dataset,
-    dataset_kwargs,
-    crf
+        model,
+        multiscale,
+        model_dir,
+        blend,
+        window_size,
+        window_stride,
+        window_batch_size,
+        save_images,
+        frac_dataset,
+        dataset_kwargs,
+        crf,
+        img_path
 ):
     db = create_dataset(dataset_kwargs)
     normalization = db.dataset.normalization
@@ -124,7 +129,7 @@ def eval_dataset(
     for batch in logger.log_every(db, print_freq, header):
         colors = batch["colors"]
         filename, im, seg_pred = process_batch(
-            model, batch, window_size, window_stride, window_batch_size, crf, normalization
+            model, batch, window_size, window_stride, window_batch_size, crf, normalization, img_path
         )
         ims[filename] = im
         seg_pred_maps[filename] = seg_pred
@@ -209,22 +214,23 @@ def eval_dataset(
 @click.option("--local_rank", type=int, default=None)
 @click.option("--eval-split", type=str, default=None)
 @click.option("--crf/--no-crf", default=False, is_flag=True)
+@click.option("--img-path", default=None, type=str)
 def main(
-    model_path,
-    dataset_name,
-    im_size,
-    multiscale,
-    blend,
-    window_size,
-    window_stride,
-    window_batch_size,
-    save_images,
-    frac_dataset,
-    local_rank,
-    eval_split,
-    crf
+        model_path,
+        dataset_name,
+        im_size,
+        multiscale,
+        blend,
+        window_size,
+        window_stride,
+        window_batch_size,
+        save_images,
+        frac_dataset,
+        local_rank,
+        eval_split,
+        crf,
+        img_path
 ):
-
     model_dir = Path(model_path).parent
     torch.cuda.set_device(local_rank)
     torch.distributed.init_process_group(backend="nccl", init_method="env://")
@@ -276,7 +282,8 @@ def main(
         save_images,
         frac_dataset,
         dataset_kwargs,
-        crf
+        crf,
+        img_path
     )
 
     # distributed.barrier()
