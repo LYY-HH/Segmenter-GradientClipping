@@ -13,7 +13,7 @@ import segm.utils.torch as ptu
 from segm import config
 
 from segm.model.factory import create_segmenter
-from segm.optim.factory import create_optimizer, create_scheduler
+from segm.optim.factory import create_scheduler
 from segm.data.factory import create_dataset
 from segm.model.utils import num_params
 
@@ -26,6 +26,8 @@ from segm.engine import train_one_epoch, evaluate
 import mlflow
 
 from hashlib import sha1
+
+from segm.optim.optim_factory import get_parameter_groups, LayerDecayValueAssigner, create_optimizer
 
 
 @click.command(help="")
@@ -57,6 +59,7 @@ from hashlib import sha1
 @click.option("-lr", "--learning-rate", default=None, type=float)
 @click.option("--normalization", default=None, type=str)
 @click.option("--enc-lr", default=0.1, type=float)
+@click.option("--layer-decay", default=1.0, type=float)
 # pus parameters
 @click.option("--pus-type", default=None, type=str)
 @click.option("--pus-beta", default=None, type=float)
@@ -96,7 +99,8 @@ def main(
         ann_dir,
         local_rank,
         seed,
-        run_id
+        run_id,
+        layer_decay
 ):
     # start distributed mode
     ptu.set_gpu_mode(True)
@@ -246,7 +250,29 @@ def main(
             "params": model.decoder.parameters()
         }
     ]
-    optimizer = create_optimizer(opt_args, model_params)
+    model_without_ddp = model
+
+    num_layers = model_without_ddp.encoder.get_num_layers()
+    if layer_decay < 1.0:
+        # 总共包含num_blocks + 2层，block前(patch_embed, cls_token, pos_embed), block后
+        assigner = LayerDecayValueAssigner(
+            list(enc_lr * layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
+    else:
+        assigner = None
+
+    if assigner is not None:
+        print("Assigned values = %s" % str(assigner.values))
+    skip_weight_decay_list = model.no_weight_decay()
+
+    if assigner is not None:
+        # params分组，包括if_weight_decay和lr_scale
+        optimizer = create_optimizer(
+            opt_args, model_without_ddp, skip_list=skip_weight_decay_list,
+            get_num_layer=assigner.get_layer_id if assigner is not None else None,
+            get_layer_scale=assigner.get_scale if assigner is not None else None)
+        print('==========lwd==========')
+    else:
+        optimizer = create_optimizer(opt_args, model)
     # print(optimizer.param_groups[0]["lr"])
     lr_scheduler = create_scheduler(opt_args, optimizer)
     num_iterations = 0

@@ -105,6 +105,9 @@ class VisionTransformer(nn.Module):
     def load_pretrained(self, checkpoint_path, prefix=""):
         _load_weights(self, checkpoint_path, prefix)
 
+    def get_num_layers(self):
+        return len(self.blocks)
+    
     def forward(self, im, return_features=False):
         B, _, H, W = im.shape
         PS = self.patch_size
@@ -178,3 +181,4 @@ class VisionTransformer(nn.Module):
                 x = blk(x)
             else:
                 return blk(x, return_attention=True)
+
