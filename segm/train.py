@@ -241,19 +241,19 @@ def main(
     opt_vars = vars(opt_args)
     for k, v in optimizer_kwargs.items():
         opt_vars[k] = v
-    model_params = [
-        {
-            "params": model.encoder.parameters(),
-            "lr": enc_lr * lr
-        },
-        {
-            "params": model.decoder.parameters()
-        }
-    ]
+    # model_params = [
+    #     {
+    #         "params": model.encoder.parameters(),
+    #         "lr": enc_lr * lr
+    #     },
+    #     {
+    #         "params": model.decoder.parameters()
+    #     }
+    # ]
     model_without_ddp = model
 
     num_layers = model_without_ddp.encoder.get_num_layers()
-    if layer_decay < 1.0:
+    if layer_decay < 1.0 or enc_lr < 1.0:
         # 总共包含num_blocks + 2层，block前(patch_embed, cls_token, pos_embed), block后
         assigner = LayerDecayValueAssigner(
             list(enc_lr * layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
@@ -295,9 +295,9 @@ def main(
         variant["algorithm_kwargs"]["start_epoch"] = checkpoint["epoch"] + 1
         try:
             # load best_checkpoint
-            checkpoint_best = torch.load(checkpoint_best_path, map_location="cpu")
-            max_epoch = checkpoint_best["epoch"]
-            max_miou = checkpoint_best["miou"]
+            checkpoint_btest = torch.load(checkpoint_best_path, map_location="cpu")
+            max_epoch = checkpoint_best_path["epoch"]
+            max_miou = checkpoint_best_path["miou"]
         except:
             pass
 
@@ -333,6 +333,9 @@ def main(
     print(f"Decoder parameters: {num_params(model_without_ddp.decoder)}")
 
     for epoch in range(start_epoch, num_epochs):
+        for param_group in optimizer.param_groups:
+            if "lr_scale" in param_group:
+                param_group["lr"] = param_group["lr"] * param_group["lr_scale"]
         # train for one epoch
         train_logger = train_one_epoch(
             model,
