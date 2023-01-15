@@ -60,6 +60,8 @@ from segm.optim.optim_factory import get_parameter_groups, LayerDecayValueAssign
 @click.option("--normalization", default=None, type=str)
 @click.option("--enc-lr", default=0.1, type=float)
 @click.option("--layer-decay", default=1.0, type=float)
+@click.option("--iter-warmup", default=0, type=int)
+@click.option("--min-lr", default=1e-5, type=float)
 # pus parameters
 @click.option("--pus-type", default=None, type=str)
 @click.option("--pus-beta", default=None, type=float)
@@ -100,7 +102,9 @@ def main(
         local_rank,
         seed,
         run_id,
-        layer_decay
+        layer_decay,
+        iter_warmup,
+        min_lr
 ):
     # start distributed mode
     ptu.set_gpu_mode(True)
@@ -164,6 +168,7 @@ def main(
         pus_beta=pus_beta,
         pus_power=pus_power,
         pus_kernel=pus_kernel,
+        layer_decay=layer_decay,
         dataset_kwargs=dict(
             dataset=dataset,
             image_size=im_size,
@@ -189,10 +194,11 @@ def main(
             clip_grad=None,
             sched=scheduler,
             epochs=num_epochs,
-            min_lr=1e-5,
+            min_lr=min_lr,
             poly_power=0.9,
             poly_step_size=1,
-            enc_lr=enc_lr
+            enc_lr=enc_lr,
+            iter_warmup=iter_warmup
         ),
         net_kwargs=model_cfg,
         amp=amp,
@@ -236,7 +242,6 @@ def main(
     # optimizer
     optimizer_kwargs = variant["optimizer_kwargs"]
     optimizer_kwargs["iter_max"] = len(train_loader) * optimizer_kwargs["epochs"]
-    optimizer_kwargs["iter_warmup"] = 0.0
     opt_args = argparse.Namespace()
     opt_vars = vars(opt_args)
     for k, v in optimizer_kwargs.items():
@@ -256,7 +261,7 @@ def main(
     if layer_decay < 1.0 or enc_lr < 1.0:
         # 总共包含num_blocks + 2层，block前(patch_embed, cls_token, pos_embed), block后
         assigner = LayerDecayValueAssigner(
-            list(enc_lr * layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
+            list(enc_lr * layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2))+[1])
     else:
         assigner = None
 
@@ -333,9 +338,6 @@ def main(
     print(f"Decoder parameters: {num_params(model_without_ddp.decoder)}")
 
     for epoch in range(start_epoch, num_epochs):
-        for param_group in optimizer.param_groups:
-            if "lr_scale" in param_group:
-                param_group["lr"] = param_group["lr"] * param_group["lr_scale"]
         # train for one epoch
         train_logger = train_one_epoch(
             model,

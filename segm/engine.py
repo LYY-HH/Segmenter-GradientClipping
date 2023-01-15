@@ -32,6 +32,10 @@ def train_one_epoch(
     data_loader.set_epoch(epoch)
     num_updates = epoch * len(data_loader)
     for batch in logger.log_every(data_loader, print_freq, header):
+        for param_group in optimizer.param_groups:
+            if "lr_scale" in param_group:
+                param_group["lr"] = param_group["lr"] * param_group["lr_scale"]
+
         im = batch["im"].to(ptu.device)
         seg_gt = batch["segmentation"].long().to(ptu.device)
 
@@ -191,8 +195,8 @@ def train_one_epoch(
 
         logger.update(
             loss=loss.item(),
-            enc_learning_rate=optimizer.param_groups[0]["lr"],
-            dec_learning_rate=optimizer.param_groups[1]["lr"],
+            # enc_learning_rate=optimizer.param_groups[0]["lr"],
+            # dec_learning_rate=optimizer.param_groups[1]["lr"],
         )
 
     return logger

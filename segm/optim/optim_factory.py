@@ -43,6 +43,8 @@ def get_num_layer_for_vit(var_name, num_max_layer):
         elif "blocks" in var_name:
             layer_id = int(var_name.split('.')[2])
             return layer_id + 1
+        else:
+            return num_max_layer - 2
     return num_max_layer - 1
 
 
