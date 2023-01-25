@@ -68,7 +68,7 @@ from segm.optim.optim_factory import get_parameter_groups, LayerDecayValueAssign
 @click.option("--pus-power", default=None, type=float)
 @click.option("--pus-kernel", default=None, type=int)
 # dist parameters
-@click.option("--num-workers", default=10, type=int)
+@click.option("--num-workers", default=2, type=int)
 @click.option("--local_rank", type=int, default=None)
 def main(
         log_dir,
@@ -106,9 +106,12 @@ def main(
         iter_warmup,
         min_lr
 ):
+    torch.cuda.set_device(local_rank)
+    torch.distributed.init_process_group(backend="nccl", init_method="env://")
+    ptu.set_gpu_dist_mode(True)
     # start distributed mode
-    ptu.set_gpu_mode(True)
-    distributed.init_process()
+    # ptu.set_gpu_mode(True)
+    # distributed.init_process()
 
     # start mlflow
     if resume:
@@ -310,7 +313,8 @@ def main(
         sync_model(log_dir, model)
 
     if ptu.distributed:
-        model = DDP(model, device_ids=[ptu.device], find_unused_parameters=True)
+        # model = DDP(model, device_ids=[ptu.device], find_unused_parameters=True)
+        model = DDP(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
     # save config
     variant_str = yaml.dump(variant)
