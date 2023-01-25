@@ -58,7 +58,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
 
 
 def process_batch(
-        model, batch, window_size, window_stride, window_batch_size, crf, normalization, img_path
+        model, batch, window_size, window_stride, window_batch_size, predict_dir
 ):
     ims = batch["im"]
     ims_metas = batch["im_metas"]
@@ -79,19 +79,18 @@ def process_batch(
         window_batch_size,
     )
     im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
-    seg_prob = seg_pred.detach().clone()
-
-    keys = torch.unique(seg_pred)
-    seg_prob = torch.tensor([seg_prob[k] for k in keys])
-    if crf:
-        from segm.eval.densecrf import crf_inference
-
-        orig_image = np.array(Image.open(os.path.join(img_path, filename)).convert("RGB")).astype(np.uint8)
-        bgcam_score = torch.nn.functional.softmax(seg_prob, dim=0).cpu().numpy()
-        crf_score = crf_inference(orig_image, bgcam_score, labels=bgcam_score.shape[0])
-        seg_pred = torch.tensor(crf_score)
+    seg_prob = seg_pred.detach().clone()[:21]
 
     seg_pred = seg_pred.argmax(0)
+    keys = np.arange(21)
+
+    keys = torch.unique(seg_pred).cpu().numpy()
+
+    seg_prob = seg_prob[keys]
+
+    if predict_dir is not None:
+        np.save(os.path.join(predict_dir, filename.replace("jpg", "npy")),
+                {"prob": seg_prob.cpu().numpy(), "keys": keys})
 
     return filename, im.cpu(), seg_pred.cpu()
 
@@ -107,8 +106,7 @@ def eval_dataset(
         save_images,
         frac_dataset,
         dataset_kwargs,
-        crf,
-        img_path
+        predict_dir
 ):
     db = create_dataset(dataset_kwargs)
     normalization = db.dataset.normalization
@@ -128,8 +126,8 @@ def eval_dataset(
     idx = 0
     for batch in logger.log_every(db, print_freq, header):
         colors = batch["colors"]
-        filename, im, seg_pred = process_batch(
-            model, batch, window_size, window_stride, window_batch_size, crf, normalization, img_path
+        filename, im, seg_pred, = process_batch(
+            model, batch, window_size, window_stride, window_batch_size, predict_dir
         )
         ims[filename] = im
         seg_pred_maps[filename] = seg_pred
@@ -213,8 +211,7 @@ def eval_dataset(
 @click.option("-frac-dataset", "--frac-dataset", default=1.0, type=float)
 @click.option("--local_rank", type=int, default=None)
 @click.option("--eval-split", type=str, default=None)
-@click.option("--crf/--no-crf", default=False, is_flag=True)
-@click.option("--img-path", default=None, type=str)
+@click.option("--predict-dir", default=None, type=str)
 def main(
         model_path,
         dataset_name,
@@ -228,8 +225,7 @@ def main(
         frac_dataset,
         local_rank,
         eval_split,
-        crf,
-        img_path
+        predict_dir,
 ):
     model_dir = Path(model_path).parent
     torch.cuda.set_device(local_rank)
@@ -268,9 +264,12 @@ def main(
         normalization=normalization,
         crop=False,
         rep_aug=False,
-        eval_split=eval_split
     )
 
+    if dataset_name == "coco":
+        dataset_kwargs['eval_split'] = eval_split
+    if predict_dir is not None:
+        Path(predict_dir).mkdir(parents=True, exist_ok=True)
     eval_dataset(
         model,
         multiscale,
@@ -282,8 +281,7 @@ def main(
         save_images,
         frac_dataset,
         dataset_kwargs,
-        crf,
-        img_path
+        predict_dir
     )
 
     # distributed.barrier()
