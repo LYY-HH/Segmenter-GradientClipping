@@ -58,7 +58,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
 
 
 def process_batch(
-        model, batch, window_size, window_stride, window_batch_size, predict_dir
+        model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls
 ):
     ims = batch["im"]
     ims_metas = batch["im_metas"]
@@ -79,7 +79,7 @@ def process_batch(
         window_batch_size,
     )
     im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
-    seg_prob = seg_pred.detach().clone()[:21]
+    seg_prob = seg_pred.detach().clone()[:n_cls]
 
     seg_pred = seg_pred.argmax(0)
     keys = np.arange(21)
@@ -114,6 +114,8 @@ def eval_dataset(
     im_size = dataset_kwargs["image_size"]
     cat_names = db.base_dataset.names
     n_cls = db.unwrapped.n_cls
+    if dataset_name == "pascal_context":
+        n_cls = 21
     if multiscale:
         db.dataset.set_multiscale_mode()
 
@@ -127,7 +129,7 @@ def eval_dataset(
     for batch in logger.log_every(db, print_freq, header):
         colors = batch["colors"]
         filename, im, seg_pred, = process_batch(
-            model, batch, window_size, window_stride, window_batch_size, predict_dir
+            model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls
         )
         ims[filename] = im
         seg_pred_maps[filename] = seg_pred
