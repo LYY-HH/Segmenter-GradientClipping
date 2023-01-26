@@ -81,18 +81,18 @@ def process_batch(
     im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
     seg_prob = seg_pred.detach().clone()[:n_cls]
 
-    seg_pred = seg_pred.argmax(0)
-    keys = np.arange(21)
+    seg_pred = seg_pred.argmax(0).cpu().numpy()
+    keys = np.arange(n_cls)
 
-    keys = torch.unique(seg_pred).cpu().numpy()
+    keys = np.unique(seg_pred)
 
-    seg_prob = seg_prob[keys]
+    seg_prob = seg_prob[keys].cpu().numpy()
 
     if predict_dir is not None:
         np.save(os.path.join(predict_dir, filename.replace("jpg", "npy")),
-                {"prob": seg_prob.cpu().numpy(), "keys": keys})
+                {"prob": seg_prob, "keys": keys, "pred": seg_pred})
 
-    return filename, im.cpu(), seg_pred.cpu()
+    return filename, im.cpu(), seg_pred
 
 
 def eval_dataset(
@@ -185,7 +185,6 @@ def eval_dataset(
         ret_cat_iou=True,
         distributed=ptu.distributed,
     )
-
     if ptu.dist_rank == 0:
         scores["inference"] = "single_scale" if not multiscale else "multi_scale"
         suffix = "ss" if not multiscale else "ms"
@@ -195,6 +194,8 @@ def eval_dataset(
                 scores[k] = v.item()
             if k != "cat_iou":
                 print(f"{k}: {scores[k]}")
+            if k == "cat_iou":
+                print(v)
         scores_str = yaml.dump(scores)
         with open(model_dir / f"scores_{suffix}.yml", "w") as f:
             f.write(scores_str)
