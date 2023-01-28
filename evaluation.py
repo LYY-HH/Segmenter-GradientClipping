@@ -106,8 +106,7 @@ categories_coco = ['background',
                    'toothbrush']
 
 
-def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, input_type='png', threshold=1.0, printlog=False,
-                   out_crf=False, n_jobs=10, img_dir=None, cam_type="cam", out_dir=None):
+def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, n_jobs=10):
     def compare(idx):
         name = name_list[idx]
         predict_file = os.path.join(predict_folder, '%s.png' % name)
@@ -167,22 +166,21 @@ def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, input_type=
     loglist['FP'] = fp * 100
     fn = np.nanmean(np.array(FN_ALL))
     loglist['FN'] = fn * 100
-    if printlog:
-        for i in range(num_cls):
-            if num_cls == 21:
-                if i % 2 != 1:
-                    print('%11s:%7.3f%%' % (categories[i], IoU[i] * 100), end='\t')
-                else:
-                    print('%11s:%7.3f%%' % (categories[i], IoU[i] * 100))
+    for i in range(num_cls):
+        if num_cls == 21:
+            if i % 2 != 1:
+                print('%11s:%7.3f%%' % (categories[i], IoU[i] * 100), end='\t')
             else:
-                if i % 2 != 1:
-                    print('%11s:%7.3f%%' % (categories_coco[i], IoU[i] * 100), end='\t')
-                else:
-                    print('%11s:%7.3f%%' % (categories_coco[i], IoU[i] * 100))
-        print('\n======================================================')
-        print('%11s:%7.3f%%' % ('mIoU', miou * 100))
-        print('\n')
-        print(f'FP = {fp * 100}, FN = {fn * 100}')
+                print('%11s:%7.3f%%' % (categories[i], IoU[i] * 100))
+        else:
+            if i % 2 != 1:
+                print('%11s:%7.3f%%' % (categories_coco[i], IoU[i] * 100), end='\t')
+            else:
+                print('%11s:%7.3f%%' % (categories_coco[i], IoU[i] * 100))
+    print('\n======================================================')
+    print('%11s:%7.3f%%' % ('mIoU', miou * 100))
+    print('\n')
+    print(f'FP = {fp * 100}, FN = {fn * 100}')
 
 
 
@@ -192,14 +190,10 @@ if __name__ == '__main__':
     parser.add_argument("--list", default='./VOC2012/ImageSets/Segmentation/train.txt', type=str)
     parser.add_argument("--predict_dir", default='./out_rw', type=str)
     parser.add_argument("--gt_dir", default='./VOC2012/SegmentationClass', type=str)
-    parser.add_argument("--img_dir", type=str, default=None)
     parser.add_argument('--num_classes', default=21, type=int)
 
     args = parser.parse_args()
 
     df = pd.read_csv(args.list, names=['filename'], converters={"filename": str})
     name_list = df['filename'].values
-    do_python_eval(args.predict_dir, args.gt_dir, name_list, args.num_classes, args.type, args.t,
-                                 printlog=True, cam_type=args.cam_type,
-                                 out_crf=args.out_crf, n_jobs=args.n_jobs, img_dir=args.img_dir,
-                                 out_dir=args.out_dir)
+    do_python_eval(args.predict_dir, args.gt_dir, name_list, args.num_classes)
