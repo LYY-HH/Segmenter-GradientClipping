@@ -5,7 +5,7 @@ import argparse
 import torch
 from PIL import Image
 import pandas as pd
-from segm.eval.densecrf import crf_inference_voc12, crf_inference_coco, crf_inference_coco_label
+from segm.eval.densecrf import crf_inference_voc12, crf_inference_coco
 from pathlib import Path
 
 import torch.nn.functional as F
@@ -148,9 +148,9 @@ if __name__ == '__main__':
         elif args.type == "png":
             predict = seg_prob["pred"]
 
-
-        # predict_img = Image.fromarray(predict)
-        # predict_img.save(os.path.join(args.predict_png_dir, name_list[i] + ".png"))
+        if args.predict_png_dir is not None:
+            predict_img = Image.fromarray(predict)
+            predict_img.save(os.path.join(args.predict_png_dir, name_list[i] + ".png"))
 
         gt_file = os.path.join(args.gt_folder, name_list[i] + ".png")
         gt = np.array(Image.open(gt_file))

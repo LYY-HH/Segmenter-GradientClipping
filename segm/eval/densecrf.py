@@ -17,7 +17,7 @@ def crf_inference_voc12(img, probs, t=10, scale_factor=1, labels=21):
 
     d.setUnaryEnergy(unary)
     ## voc12
-    d.addPairwiseGaussian(sxy=4 / scale_factor, compat=3)
+    d.addPairwiseGaussian(sxy=3 / scale_factor, compat=3)
     d.addPairwiseBilateral(sxy=83 / scale_factor, srgb=5, rgbim=np.ascontiguousarray(np.copy(img_c)), compat=3)
     # d.addPairwiseGaussian(sxy=3 / scale_factor, compat=3)
     # d.addPairwiseBilateral(sxy=80 / scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
@@ -37,38 +37,6 @@ def crf_inference_voc12(img, probs, t=10, scale_factor=1, labels=21):
     return np.array(Q).reshape((n_labels, h, w))
 
 
-def crf_inference_coco_label(img, labels, t=10, n_labels=21, gt_prob=0.7):
-    import pydensecrf.densecrf as dcrf
-    from pydensecrf.utils import unary_from_labels
-
-    h, w = img.shape[:2]
-
-    d = dcrf.DenseCRF2D(w, h, n_labels)
-
-    unary = unary_from_labels(labels, n_labels, gt_prob=gt_prob, zero_unsure=False)
-
-    d.setUnaryEnergy(unary)
-    ## voc12
-    # d.addPairwiseGaussian(sxy=4 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=83 / scale_factor, srgb=5, rgbim=np.ascontiguousarray(np.copy(img_c)), compat=3)
-    # d.addPairwiseGaussian(sxy=3 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=80 / scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
-    # d.addPairwiseGaussian(sxy=3/scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=80/scale_factor, srgb=13, rgbim=np.ascontiguousarray(np.copy(img_c)), compat=10)
-    # d.addPairwiseGaussian(sxy=3/scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=32/scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
-    # d.addPairwiseGaussian(sxy=1 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=67 / scale_factor, srgb=3, rgbim=np.copy(img_c), compat=4)
-
-    ## coco
-    d.addPairwiseGaussian(sxy=3, compat=3)
-    d.addPairwiseBilateral(sxy=50, srgb=5, rgbim=np.ascontiguousarray(np.copy(img)), compat=10)
-
-    q = d.inference(t)
-
-    return np.argmax(np.array(q).reshape((n_labels, h, w)), axis=0)
-
-
 def crf_inference_coco(img, probs, t=10, scale_factor=1, labels=21):
     import pydensecrf.densecrf as dcrf
     from pydensecrf.utils import unary_from_softmax
@@ -86,19 +54,16 @@ def crf_inference_coco(img, probs, t=10, scale_factor=1, labels=21):
     d.setUnaryEnergy(unary)
     ## voc12
     # d.addPairwiseGaussian(sxy=4 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=83 / scale_factor, srgb=5, rgbim=np.ascontiguousarray(np.copy(img_c)), compat=3)
-    # d.addPairwiseGaussian(sxy=3 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=80 / scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
+    # d.addPairwiseBilateral(sxy=83 / scale_factor, srgb=5, rgbim=np.copy(img_c), compat=3)
     # d.addPairwiseGaussian(sxy=3/scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=80/scale_factor, srgb=13, rgbim=np.ascontiguousarray(np.copy(img_c)), compat=10)
+    # d.addPairwiseBilateral(sxy=80/scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
     # d.addPairwiseGaussian(sxy=3/scale_factor, compat=3)
     # d.addPairwiseBilateral(sxy=32/scale_factor, srgb=13, rgbim=np.copy(img_c), compat=10)
-    # d.addPairwiseGaussian(sxy=1 / scale_factor, compat=3)
-    # d.addPairwiseBilateral(sxy=67 / scale_factor, srgb=3, rgbim=np.copy(img_c), compat=4)
-
     ## coco
-    d.addPairwiseGaussian(sxy=3, compat=3)
-    d.addPairwiseBilateral(sxy=50, srgb=5, rgbim=np.ascontiguousarray(np.copy(img)), compat=10)
+    d.addPairwiseGaussian(sxy=1 / scale_factor, compat=3)
+    d.addPairwiseBilateral(sxy=67 / scale_factor, srgb=3, rgbim=np.copy(img_c), compat=4)
+    # d.addPairwiseGaussian(sxy=3, compat=3)
+    # d.addPairwiseBilateral(sxy=50, srgb=5, rgbim=np.copy(img_c), compat=10)
 
     Q = d.inference(t)
 

@@ -34,18 +34,20 @@ segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val
 lr1e-4_seg_vit_small_patch16_384_mask_VOC2012_MCTformerV2SE@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42/checkpoint.pth \
 coco
 
-CUDA_VISIBLE_DEVICES=2,3 PYTHONPATH=. DATASET=/data/zhulianghui/data WORK=. \
-python -m torch.distributed.launch --nproc_per_node=2 --master_port=10201 \
-segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val_mini.txt \
+python val_tmp.py
+CUDA_VISIBLE_DEVICES=1,2,3 PYTHONPATH=. DATASET=/data/yingyueli/data WORK=. \
+python -m torch.distributed.launch --nproc_per_node=3 --master_port=10201 \
+segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val_tmp.txt \
 --predict-dir pus1.2_adaptive_lr1e-4_seg_vit_small_patch16_384_COCO_MCTformerV2SE@coco@\
 train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42/seg_prob_ms \
 pus1.2_adaptive_lr1e-4_seg_vit_small_patch16_384_COCO_MCTformerV2SE@coco@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42\
-/ckp99.pth \
+/checkpoint.pth \
 coco
+
 # 生成multiscale npy文件
 CUDA_VISIBLE_DEVICES=1,2,3 PYTHONPATH=. DATASET=/data/yingyueli/data WORK=. \
 python -m torch.distributed.launch --nproc_per_node=3 --master_port=10201 \
-segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val.txt\
+segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val_tmp.txt\
 --predict-dir pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_\
 MCTformerV2SE@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42/seg_prob_ms \
 pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_MCTformerV2SE@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42\
@@ -53,18 +55,16 @@ pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_MCTformerV2SE@tra
 pascal_context
 
 # 生成multiscale npy文件
-CUDA_VISIBLE_DEVICES=1,2 PYTHONPATH=. DATASET=/data/yingyueli/data WORK=. \
-python -m torch.distributed.launch --nproc_per_node=2 --master_port=10201 \
-segm/eval/miou.py --window-batch-size 1 --eval-split voc_format/val_mini.txt \
+CUDA_VISIBLE_DEVICES=1,2,3 PYTHONPATH=. DATASET=/data/yingyueli/data WORK=. \
+python -m torch.distributed.launch --nproc_per_node=3 --master_port=10201 \
+segm/eval/miou.py --window-batch-size 1 --multiscale --eval-split voc_format/val_mini.txt \
 seg_deit_small_patch16_224_mask_lr1e-4_WeakTrCOCOPseudoMask/checkpoint.pth \
 --predict-dir seg_deit_small_patch16_224_mask_lr1e-4_WeakTrCOCOPseudoMask/seg_prob_ms \
 coco
 
-
-
 # 做crf并测试
 python -m segm.eval.make_crf \
---list data/coco/voc_format/val_mini.txt \
+--list data/coco/voc_format/val.txt \
 --predict-dir seg_deit_small_patch16_224_mask_lr1e-4_WeakTrCOCOPseudoMask/seg_prob_ms \
 --img-path data/coco/images \
 --gt-folder data/coco/voc_format/class_labels \
@@ -107,3 +107,16 @@ segm/train.py --log-dir pus1.2_local_adaptive_kernel120_ep50_seg_vit_small_patch
 --num-workers 2 --eval-freq 1 \
 --ann-dir /data/yingyueli/WeakTrCOCOPseudoMask --pus-type local_adaptive \
 --pus-beta 1.2 --pus-kernel 120 --resume --run-id 735531c179ea4830b0e909604a3b55fa
+
+
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH=. DATASET=/data/yingyueli/data WORK=. \
+python -m torch.distributed.launch --nproc_per_node=2 --master_port=12313 \
+segm/eval/miou.py --window-batch-size 1 --multiscale \
+--predict-dir pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_MCTformerV2SE\
+@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42/seg_prob_ms \
+pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_MCTformerV2SE@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42\
+/checkpoint.pth \
+pascal_context
+
+python val_tmp.py --predict-dir pus1.2_adaptive_lr1e-4_seg_deit_small_patch16_224_mask_VOC2012_MCTformerV2SE\
+@train@scale=1.0,0.8,1.2@aff_fg=0.41_bg=0.42/seg_prob_ms

@@ -65,6 +65,13 @@ def process_batch(
     ori_shape = ims_metas[0]["ori_shape"]
     ori_shape = (ori_shape[0].item(), ori_shape[1].item())
     filename = batch["im_metas"][0]["ori_filename"][0]
+    im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
+    if predict_dir is not None:
+        path = os.path.join(predict_dir, filename.replace("jpg", "npy"))
+    # if predict_dir is not None and os.path.isfile(path):
+    #     seg_prob = np.load(path, allow_pickle=True).item()
+    #     seg_pred = seg_prob["pred"]
+    #     return filename, im.cpu(), seg_pred
 
     model_without_ddp = model
     if ptu.distributed:
@@ -78,19 +85,24 @@ def process_batch(
         window_stride,
         window_batch_size,
     )
-    im = F.interpolate(ims[-1], ori_shape, mode="bilinear")
-    seg_prob = seg_pred.detach().clone()[:n_cls]
+
+    seg_prob = seg_pred.detach().clone()[:n_cls].cpu().numpy()
 
     seg_pred = seg_pred.argmax(0).cpu().numpy()
     keys = np.arange(n_cls)
 
     keys = np.unique(seg_pred)
 
-    seg_prob = seg_prob[keys].cpu().numpy()
+    seg_prob = seg_prob[keys]
+    # orig_image = np.asarray(Image.open(os.path.join("data/coco/images", filename)).convert("RGB"))
+    #
+    # from densecrf import crf_inference_coco
+    # seg_prob = crf_inference_coco(orig_image, seg_prob, labels=seg_prob.shape[0])
+    # predict = np.argmax(seg_prob, axis=0)
+    # seg_pred = keys[predict].astype(np.uint8)
 
     if predict_dir is not None:
-        np.save(os.path.join(predict_dir, filename.replace("jpg", "npy")),
-                {"prob": seg_prob, "keys": keys, "pred": seg_pred})
+        np.save(path, {"prob": seg_prob, "keys": keys, "pred": seg_pred})
 
     return filename, im.cpu(), seg_pred
 
