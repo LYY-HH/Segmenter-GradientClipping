@@ -148,12 +148,16 @@ def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, n_jobs=10):
     P_TP = []
     FP_ALL = []
     FN_ALL = []
+    Pred = []
+    Recall = []
     for i in range(num_cls):
         IoU.append(TP[i] / (T[i] + P[i] - TP[i]))
         T_TP.append(T[i] / (TP[i]))
         P_TP.append(P[i] / (TP[i]))
         FP_ALL.append((P[i] - TP[i]) / (T[i] + P[i] - TP[i]))
         FN_ALL.append((T[i] - TP[i]) / (T[i] + P[i] - TP[i]))
+        Pred.append(TP[i]/P[i])
+        Recall.append(TP[i]/T[i])
     loglist = {}
     for i in range(num_cls):
         if num_cls == 21:
@@ -166,6 +170,8 @@ def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, n_jobs=10):
     loglist['FP'] = fp * 100
     fn = np.nanmean(np.array(FN_ALL))
     loglist['FN'] = fn * 100
+    prediction = np.nanmean(np.array(Pred))
+    recall = np.nanmean(np.array(Recall))
     for i in range(num_cls):
         if num_cls == 21:
             if i % 2 != 1:
@@ -181,16 +187,25 @@ def do_python_eval(predict_folder, gt_folder, name_list, num_cls=21, n_jobs=10):
     print('%11s:%7.3f%%' % ('mIoU', miou * 100))
     print('\n')
     print(f'FP = {fp * 100}, FN = {fn * 100}')
-
+    print(f'Prediction = {prediction * 100}%, Recall = {recall * 100}%')
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--list", default='./VOC2012/ImageSets/Segmentation/train.txt', type=str)
-    parser.add_argument("--predict_dir", default='./out_rw', type=str)
-    parser.add_argument("--gt_dir", default='./VOC2012/SegmentationClass', type=str)
-    parser.add_argument('--num_classes', default=21, type=int)
+    parser.add_argument("--list",
+                        # default='../../data/VOCdevkit/VOC2012/ImageSets/Segmentation/test.txt',
+                        default='data/coco/voc_format/val.txt',
+                        type=str)
+    parser.add_argument("--predict-dir",
+                        default="pus1.2_adaptive_seg_deit_small_patch16_224_mask_lr3e-4_WeakTrCOCOPseudoMask/seg_pred_ms",
+                        type=str)
+    parser.add_argument("--n-jobs", default=10, type=int)
+    parser.add_argument("--gt-dir",
+                        # default=None
+                        # default="../../data/VOCdevkit/VOC2012/SegmentationClassAug"
+                        default="data/coco/voc_format/class_labels"
+                        )
+    parser.add_argument("--num-classes", default=91, type=int)
 
     args = parser.parse_args()
 
