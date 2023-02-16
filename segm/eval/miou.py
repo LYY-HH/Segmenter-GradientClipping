@@ -281,8 +281,7 @@ def main(
         rep_aug=False,
     )
 
-    if dataset_name == "coco":
-        dataset_kwargs['eval_split'] = eval_split
+    dataset_kwargs['eval_split'] = eval_split
     if predict_dir is not None:
         Path(predict_dir).mkdir(parents=True, exist_ok=True)
     eval_dataset(
