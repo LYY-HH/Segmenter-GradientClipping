@@ -58,3 +58,35 @@ class Segmenter(nn.Module):
         x = x[:, num_extra_tokens:]
 
         return self.decoder.get_attention_map(x, layer_id)
+
+
+class MultiSegmenter(Segmenter):
+    def __init__(self, encoder,
+                 decoder,
+                 n_cls):
+        super(MultiSegmenter, self).__init__(encoder,
+                                             decoder,
+                                             n_cls,)
+
+    def forward(self, im):
+        H_ori, W_ori = im.size(2), im.size(3)
+        im = padding(im, self.patch_size)
+        H, W = im.size(2), im.size(3)
+
+        x = self.encoder(im, return_features=True)
+
+        # remove CLS/DIST tokens for decoding
+        num_extra_tokens = 1 + self.encoder.distilled
+        # cls_token = x[:, 0]
+        # cls_pred = self.cls_pred(cls_token)
+
+        x = x[:, num_extra_tokens:]
+
+        masks1, masks2 = self.decoder(x, (H, W))
+
+        masks1 = F.interpolate(masks1, size=(H, W), mode="bilinear")
+        masks1 = unpadding(masks1, (H_ori, W_ori))
+        masks2 = F.interpolate(masks2, size=(H, W), mode="bilinear")
+        masks2 = unpadding(masks2, (H_ori, W_ori))
+
+        return masks1, masks2

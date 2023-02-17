@@ -114,3 +114,59 @@ class MaskTransformer(nn.Module):
                 x = blk(x)
             else:
                 return blk(x, return_attention=True)
+
+
+class MultiMaskTransformer(MaskTransformer):
+    def __init__(self,
+                 n_cls,
+                 patch_size,
+                 d_encoder,
+                 n_layers,
+                 n_heads,
+                 d_model,
+                 d_ff,
+                 drop_path_rate,
+                 dropout):
+        super(MultiMaskTransformer, self).__init__(n_cls,
+                                                   patch_size,
+                                                   d_encoder,
+                                                   n_layers,
+                                                   n_heads,
+                                                   d_model,
+                                                   d_ff,
+                                                   drop_path_rate,
+                                                   dropout, )
+
+    def forward(self, x, im_size):
+        H, W = im_size
+        GS = H // self.patch_size
+
+        x = self.proj_dec(x)
+        cls_emb = self.cls_emb.expand(x.size(0), -1, -1)
+        x = torch.cat((x, cls_emb), 1)
+        for blk in self.blocks[:-1]:
+            x = blk(x)
+        x2 = x
+        for blk in self.blocks[-1:]:
+            x2 = blk(x2)
+
+        masks1 = self.cls_forward(x, GS)
+        masks2 = self.cls_forward(x2, GS)
+
+        return masks1, masks2
+
+    def cls_forward(self, x, GS):
+        x = self.decoder_norm(x)
+
+        patches, cls_seg_feat = x[:, : -self.n_cls], x[:, -self.n_cls:]
+        patches = patches @ self.proj_patch
+        cls_seg_feat = cls_seg_feat @ self.proj_classes
+
+        patches = patches / patches.norm(dim=-1, keepdim=True)
+        cls_seg_feat = cls_seg_feat / cls_seg_feat.norm(dim=-1, keepdim=True)
+
+        masks = patches @ cls_seg_feat.transpose(1, 2)
+        masks = self.mask_norm(masks)
+        masks = rearrange(masks, "b (h w) n -> b n h w", h=int(GS))
+
+        return masks

@@ -58,7 +58,7 @@ def save_im(save_dir, save_name, im, seg_pred, seg_gt, colors, blend, normalizat
 
 
 def process_batch(
-        model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls
+        model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls, weight
 ):
     ims = batch["im"]
     ims_metas = batch["im_metas"]
@@ -85,6 +85,8 @@ def process_batch(
         window_stride,
         window_batch_size,
     )
+    if len(seg_pred) == 2:
+        seg_pred = weight * seg_pred[0] + seg_pred[1]
 
     seg_prob = seg_pred.detach().clone()[:n_cls].cpu().numpy()
 
@@ -118,7 +120,8 @@ def eval_dataset(
         save_images,
         frac_dataset,
         dataset_kwargs,
-        predict_dir
+        predict_dir,
+        weight
 ):
     db = create_dataset(dataset_kwargs)
     normalization = db.dataset.normalization
@@ -141,7 +144,7 @@ def eval_dataset(
     for batch in logger.log_every(db, print_freq, header):
         colors = batch["colors"]
         filename, im, seg_pred, = process_batch(
-            model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls
+            model, batch, window_size, window_stride, window_batch_size, predict_dir, n_cls, weight
         )
         ims[filename] = im
         seg_pred_maps[filename] = seg_pred
@@ -227,6 +230,10 @@ def eval_dataset(
 @click.option("--local_rank", type=int, default=None)
 @click.option("--eval-split", type=str, default=None)
 @click.option("--predict-dir", default=None, type=str)
+@click.option("--backbone", default=None, type=str)
+@click.option("--weight", default=0.5, type=float)
+
+
 def main(
         model_path,
         dataset_name,
@@ -241,6 +248,8 @@ def main(
         local_rank,
         eval_split,
         predict_dir,
+        backbone,
+        weight
 ):
     model_dir = Path(model_path).parent
     torch.cuda.set_device(local_rank)
@@ -250,7 +259,7 @@ def main(
     # ptu.set_gpu_mode(True)
     # distributed.init_process()
 
-    model, variant = load_model(model_path)
+    model, variant = load_model(model_path, backbone=backbone)
     patch_size = model.patch_size
     model.eval()
     model.to(ptu.device)
@@ -266,7 +275,8 @@ def main(
     if window_size is None:
         window_size = variant["dataset_kwargs"]["crop_size"]
     if window_stride is None:
-        window_stride = variant["dataset_kwargs"]["crop_size"] - 32
+        # window_stride = variant["dataset_kwargs"]["crop_size"] - 32
+        window_stride = variant["inference_kwargs"]["window_stride"]
 
     dataset_kwargs = dict(
         dataset=dataset_name,
@@ -295,7 +305,8 @@ def main(
         save_images,
         frac_dataset,
         dataset_kwargs,
-        predict_dir
+        predict_dir,
+        weight
     )
 
     # distributed.barrier()

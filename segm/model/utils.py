@@ -159,23 +159,48 @@ def inference(
 ):
     C = model.n_cls
     seg_map = torch.zeros((C, ori_shape[0], ori_shape[1]), device=ptu.device)
+    seg_map1 = torch.zeros((C, ori_shape[0], ori_shape[1]), device=ptu.device)
+    seg_map2 = torch.zeros((C, ori_shape[0], ori_shape[1]), device=ptu.device)
+    flag = 0
     for im, im_metas in zip(ims, ims_metas):
         im = im.to(ptu.device)
         im = resize(im, window_size)
         flip = im_metas["flip"]
         windows = sliding_window(im, flip, window_size, window_stride)
+        windows1 = sliding_window(im, flip, window_size, window_stride)
+        windows2 = sliding_window(im, flip, window_size, window_stride)
         crops = torch.stack(windows.pop("crop"))[:, 0]
         B = len(crops)
         WB = batch_size
         seg_maps = torch.zeros((B, C, window_size, window_size), device=im.device)
+        seg_maps1 = torch.zeros((B, C, window_size, window_size), device=im.device)
+        seg_maps2 = torch.zeros((B, C, window_size, window_size), device=im.device)
         with torch.no_grad():
             for i in range(0, B, WB):
-                seg_maps[i : i + WB] = model.forward(crops[i : i + WB])
+                map = model.forward(crops[i: i + WB])
+                if len(map) == 2:
+                    flag = 1
+                    seg_maps1[i: i + WB], seg_maps2[i: i + WB] = map[0], map[1]
+                else:
+                    seg_maps[i: i + WB] = map
+
         windows["seg_maps"] = seg_maps
         im_seg_map = merge_windows(windows, window_size, ori_shape)
         seg_map += im_seg_map
-    seg_map /= len(ims)
-    return seg_map
+
+        windows1["seg_maps"] = seg_maps1
+        im_seg_map = merge_windows(windows1, window_size, ori_shape)
+        seg_map1 += im_seg_map
+
+        windows2["seg_maps"] = seg_maps2
+        im_seg_map = merge_windows(windows2, window_size, ori_shape)
+        seg_map2 += im_seg_map
+    if flag == 0:
+        seg_map /= len(ims)
+        return seg_map
+    seg_map1 /= len(ims)
+    seg_map2 /= len(ims)
+    return seg_map1, seg_map2
 
 
 def num_params(model):

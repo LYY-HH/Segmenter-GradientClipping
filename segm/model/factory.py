@@ -13,8 +13,8 @@ from timm.models.vision_transformer import _create_vision_transformer
 from segm.model.vit import VisionTransformer
 from segm.model.utils import checkpoint_filter_fn
 from segm.model.decoder import DecoderLinear
-from segm.model.decoder import MaskTransformer
-from segm.model.segmenter import Segmenter
+from segm.model.decoder import MaskTransformer, MultiMaskTransformer
+from segm.model.segmenter import Segmenter, MultiSegmenter
 import segm.utils.torch as ptu
 
 
@@ -93,6 +93,13 @@ def create_decoder(encoder, decoder_cfg):
         decoder_cfg["d_model"] = dim
         decoder_cfg["d_ff"] = 4 * dim
         decoder = MaskTransformer(**decoder_cfg)
+    elif name == "multi_mask_transformer":
+        dim = encoder.d_model
+        n_heads = dim // 64
+        decoder_cfg["n_heads"] = n_heads
+        decoder_cfg["d_model"] = dim
+        decoder_cfg["d_ff"] = 4 * dim
+        decoder = MultiMaskTransformer(**decoder_cfg)
     else:
         raise ValueError(f"Unknown decoder: {name}")
     return decoder
@@ -110,16 +117,32 @@ def create_segmenter(model_cfg):
     return model
 
 
-def load_model(model_path):
+def create_multi_segmenter(model_cfg):
+    model_cfg = model_cfg.copy()
+    decoder_cfg = model_cfg.pop("decoder")
+    decoder_cfg["n_cls"] = model_cfg["n_cls"]
+
+    encoder = create_vit(model_cfg)
+    decoder = create_decoder(encoder, decoder_cfg)
+    model = MultiSegmenter(encoder, decoder, n_cls=model_cfg["n_cls"])
+    return model
+
+
+def load_model(model_path, backbone=None):
     variant_path = Path(model_path).parent / "variant.yml"
     with open(variant_path, "r") as f:
         variant = yaml.load(f, Loader=yaml.FullLoader)
     net_kwargs = variant["net_kwargs"]
-
-    model = create_segmenter(net_kwargs)
+    if backbone is None:
+        backbone = net_kwargs["backbone"]
+    if "multi" in backbone:
+        net_kwargs["decoder"]["name"] = "multi_mask_transformer"
+        model = create_multi_segmenter(net_kwargs)
+    else:
+        model = create_segmenter(net_kwargs)
     data = torch.load(model_path, map_location=ptu.device)
     checkpoint = data["model"]
 
-    model.load_state_dict(checkpoint, strict=True)
+    model.load_state_dict(checkpoint, strict=False)
 
     return model, variant
