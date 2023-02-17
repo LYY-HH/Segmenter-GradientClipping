@@ -106,12 +106,14 @@ def main(
         iter_warmup,
         min_lr
 ):
-    torch.cuda.set_device(local_rank)
-    torch.distributed.init_process_group(backend="nccl", init_method="env://")
-    ptu.set_gpu_dist_mode(True)
-    # start distributed mode
-    # ptu.set_gpu_mode(True)
-    # distributed.init_process()
+    if local_rank is not None:
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(backend="nccl", init_method="env://")
+        ptu.set_gpu_dist_mode(True)
+    else:
+        # start distributed mode
+        ptu.set_gpu_mode(True)
+        distributed.init_process()
 
     # start mlflow
     if resume:
