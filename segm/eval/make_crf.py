@@ -152,20 +152,26 @@ if __name__ == '__main__':
             predict_img = Image.fromarray(predict)
             predict_img.save(os.path.join(args.predict_png_dir, name_list[i] + ".png"))
 
-        gt_file = os.path.join(args.gt_folder, name_list[i] + ".png")
-        gt = np.array(Image.open(gt_file))
-        cal = gt < 255
-        mask = (predict == gt) * cal
+        if "test" not in args.list:
+            gt_file = os.path.join(args.gt_folder, name_list[i] + ".png")
+            gt = np.array(Image.open(gt_file))
+            cal = gt < 255
+            mask = (predict == gt) * cal
 
-        p_list, t_list, tp_list = [0] * args.num_cls, [0] * args.num_cls, [0] * args.num_cls
-        for i in range(args.num_cls):
-            p_list[i] += np.sum((predict == i) * cal)
-            t_list[i] += np.sum((gt == i) * cal)
-            tp_list[i] += np.sum((gt == i) * mask)
+            p_list, t_list, tp_list = [0] * args.num_cls, [0] * args.num_cls, [0] * args.num_cls
+            for i in range(args.num_cls):
+                p_list[i] += np.sum((predict == i) * cal)
+                t_list[i] += np.sum((gt == i) * cal)
+                tp_list[i] += np.sum((gt == i) * mask)
 
-        return p_list, t_list, tp_list
+            return p_list, t_list, tp_list
 
-
+    if "test" in args.list:
+        joblib.Parallel(n_jobs=args.n_jobs, verbose=10, pre_dispatch="all")(
+            [joblib.delayed(compute)(i) for i in range(len(name_list))]
+        )
+        import sys
+        sys.exit()
     results = joblib.Parallel(n_jobs=args.n_jobs, verbose=10, pre_dispatch="all")(
         [joblib.delayed(compute)(i) for i in range(len(name_list))]
     )

@@ -151,8 +151,10 @@ def eval_dataset(
         idx += 1
         if idx > len(db) * frac_dataset:
             break
-
-    seg_gt_maps = db.dataset.get_gt_seg_maps()
+    try:
+        seg_gt_maps = db.dataset.get_gt_seg_maps()
+    except:
+        return
     if save_images:
         save_dir = model_dir / "images"
         if ptu.dist_rank == 0:
